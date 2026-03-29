@@ -40,7 +40,8 @@ export async function handleDebugCommands(name: string, args: any) {
 
     case "exec": {
       const binary = String(args?.binary);
-      const cmdArgs = (args?.args as string[]) || [];
+      const execArgs = (args?.args as string[]) || [];
+      const cmdArgs = execArgs.length > 0 ? ["--", ...execArgs] : [];
 
       const session = await startDebugSession("exec", binary, cmdArgs);
       return {

@@ -28,23 +28,24 @@ export async function getAvailablePort(): Promise<number> {
 }
 
 /**
- * Start a new debug session
+ * Start a new debug session.
+ * Waits for dlv to emit "API server listening" on stderr before resolving.
  */
 export async function startDebugSession(type: string, target: string, args: string[] = []): Promise<DebugSession> {
   const port = await getAvailablePort();
   const id = Math.random().toString(36).substring(7);
-  
+
   const dlvArgs = [
     type,
     "--headless",
     `--listen=:${port}`,
     "--accept-multiclient",
     "--api-version=2",
-    target,
+    ...(target ? [target] : []),
     ...args
   ];
 
-  const process = spawn("dlv", dlvArgs, {
+  const child = spawn("dlv", dlvArgs, {
     stdio: ["pipe", "pipe", "pipe"]
   });
 
@@ -52,12 +53,44 @@ export async function startDebugSession(type: string, target: string, args: stri
     id,
     type,
     target,
-    process,
+    process: child,
     port,
     breakpoints: new Map()
   };
 
   sessions.set(id, session);
+
+  // Wait for dlv to be ready or fail
+  await new Promise<void>((resolve, reject) => {
+    let stderr = "";
+    const timeout = setTimeout(() => {
+      reject(new Error(`Delve failed to start within 30s. stderr:\n${stderr}`));
+    }, 30000);
+
+    const onData = (chunk: Buffer) => {
+      stderr += chunk.toString();
+      if (stderr.includes("API server listening at:")) {
+        clearTimeout(timeout);
+        child.stderr?.off("data", onData);
+        resolve();
+      }
+    };
+
+    child.stderr?.on("data", onData);
+
+    child.on("error", (err) => {
+      clearTimeout(timeout);
+      sessions.delete(id);
+      reject(new Error(`Failed to spawn dlv: ${err.message}`));
+    });
+
+    child.on("exit", (code) => {
+      clearTimeout(timeout);
+      sessions.delete(id);
+      reject(new Error(`dlv exited with code ${code} before becoming ready. stderr:\n${stderr}`));
+    });
+  });
+
   return session;
 }
 
