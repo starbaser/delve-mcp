@@ -15,13 +15,11 @@ export async function handleControlCommands(name: string, args: any) {
     case "setBreakpoint": {
       const { file, line, condition } = args;
       const response = await sendDelveCommand(session, "CreateBreakpoint", {
-        file,
-        line,
-        cond: condition
+        Breakpoint: { file, line, cond: condition || "" }
       });
 
       const bp: Breakpoint = {
-        id: response.id,
+        id: response.Breakpoint?.id ?? response.id,
         file,
         line,
         condition
@@ -38,7 +36,7 @@ export async function handleControlCommands(name: string, args: any) {
 
     case "removeBreakpoint": {
       const { breakpointId } = args;
-      await sendDelveCommand(session, "ClearBreakpoint", { id: breakpointId });
+      await sendDelveCommand(session, "ClearBreakpoint", { Id: breakpointId });
       session.breakpoints.delete(breakpointId);
 
       return {
@@ -90,7 +88,10 @@ export async function handleControlCommands(name: string, args: any) {
     }
 
     case "variables": {
-      const response = await sendDelveCommand(session, "ListLocalVars", {});
+      const response = await sendDelveCommand(session, "ListLocalVars", {
+        Scope: { GoroutineID: -1, Frame: 0, DeferredCall: 0 },
+        Cfg: {}
+      });
       return {
         content: [{
           type: "text",
@@ -101,7 +102,11 @@ export async function handleControlCommands(name: string, args: any) {
 
     case "evaluate": {
       const { expr } = args;
-      const response = await sendDelveCommand(session, "Eval", { expr });
+      const response = await sendDelveCommand(session, "Eval", {
+        Scope: { GoroutineID: -1, Frame: 0, DeferredCall: 0 },
+        Expr: expr,
+        Cfg: {}
+      });
       return {
         content: [{
           type: "text",
