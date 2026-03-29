@@ -60,23 +60,25 @@ export async function startDebugSession(type: string, target: string, args: stri
 
   sessions.set(id, session);
 
-  // Wait for dlv to be ready or fail
+  // dlv prints "API server listening at:" on stdout when ready
   await new Promise<void>((resolve, reject) => {
+    let stdout = "";
     let stderr = "";
     const timeout = setTimeout(() => {
-      reject(new Error(`Delve failed to start within 30s. stderr:\n${stderr}`));
+      reject(new Error(`Delve failed to start within 30s.\nstdout: ${stdout}\nstderr: ${stderr}`));
     }, 30000);
 
-    const onData = (chunk: Buffer) => {
-      stderr += chunk.toString();
-      if (stderr.includes("API server listening at:")) {
+    child.stdout?.on("data", (chunk: Buffer) => {
+      stdout += chunk.toString();
+      if (stdout.includes("API server listening at:")) {
         clearTimeout(timeout);
-        child.stderr?.off("data", onData);
         resolve();
       }
-    };
+    });
 
-    child.stderr?.on("data", onData);
+    child.stderr?.on("data", (chunk: Buffer) => {
+      stderr += chunk.toString();
+    });
 
     child.on("error", (err) => {
       clearTimeout(timeout);
@@ -87,7 +89,7 @@ export async function startDebugSession(type: string, target: string, args: stri
     child.on("exit", (code) => {
       clearTimeout(timeout);
       sessions.delete(id);
-      reject(new Error(`dlv exited with code ${code} before becoming ready. stderr:\n${stderr}`));
+      reject(new Error(`dlv exited with code ${code} before becoming ready.\nstdout: ${stdout}\nstderr: ${stderr}`));
     });
   });
 
